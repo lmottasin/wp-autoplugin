@@ -148,6 +148,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 				</td>
 			</tr>
 			<tr valign="top">
+				<th scope="row"><?php esc_html_e( 'Use Plugin Composer', 'wp-autoplugin' ); ?></th>
+				<td>
+					<label>
+						<input type="checkbox" name="wp_autoplugin_use_composer" id="wp_autoplugin_use_composer" value="1" <?php checked( get_option( 'wp_autoplugin_use_composer', false ) ); ?> />
+						<?php esc_html_e( 'Enable component-based plugin generation', 'wp-autoplugin' ); ?>
+					</label>
+					<p class="description">
+						<?php esc_html_e( 'Plugin Composer analyzes your description and suggests structured components (admin pages, shortcodes, widgets, etc.) to build your plugin. This provides more organized and modular plugin generation.', 'wp-autoplugin' ); ?>
+					</p>
+				</td>
+			</tr>
+			<tr valign="top">
 				<th scope="row"><?php esc_html_e( 'Custom Models', 'wp-autoplugin' ); ?></th>
 				<td>
 					<div id="custom-models-list">

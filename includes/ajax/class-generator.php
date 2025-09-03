@@ -266,4 +266,55 @@ class Generator {
 			]
 		);
 	}
+
+	/**
+	 * AJAX handler for modifying a plugin using composer.
+	 *
+	 * @return void
+	 */
+	public function modify_plugin() {
+		$plugin_code    = isset( $_POST['plugin_code'] ) ? wp_unslash( $_POST['plugin_code'] ) : ''; // phpcs:ignore -- This cannot be sanitized, as it's the plugin code. Nonce verification is done in the parent method.
+		$modifications = isset( $_POST['modifications'] ) ? wp_unslash( $_POST['modifications'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Cannot sanitize JSON data. Nonce verification is done in the parent method.
+
+		// Decode JSON data.
+		$modifications_array = json_decode( $modifications, true );
+
+		if ( ! $modifications_array ) {
+			wp_send_json_error( esc_html__( 'Invalid modifications data.', 'wp-autoplugin' ) );
+		}
+
+		$coder_api          = $this->admin->api_handler->get_coder_api();
+		$generator          = new Plugin_Generator( $coder_api );
+		$modified_code      = $generator->modify_plugin_with_composer( $plugin_code, $modifications_array );
+
+		if ( is_wp_error( $modified_code ) ) {
+			wp_send_json_error( $modified_code->get_error_message() );
+		}
+
+		// Strip out code fences.
+		$modified_code = \WP_Autoplugin\AI_Utils::strip_code_fences( $modified_code, 'php' );
+
+		// Get token usage from the actual API that was used.
+		$token_usage = $coder_api->get_last_token_usage();
+
+		wp_send_json_success(
+			[
+				'modified_code' => $modified_code,
+				'token_usage'   => $token_usage,
+			]
+		);
+	}
+
+	/**
+	 * AJAX handler for getting available composer components.
+	 *
+	 * @return void
+	 */
+	public function get_composer_components() {
+		$planner_api = $this->admin->api_handler->get_planner_api();
+		$generator   = new Plugin_Generator( $planner_api );
+		$components  = $generator->get_composer_components();
+
+		wp_send_json_success( [ 'components' => $components ] );
+	}
 }
