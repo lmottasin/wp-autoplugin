@@ -29,12 +29,63 @@ class Plugin_Generator {
 	private $ai_api;
 
 	/**
+	 * Plugin Composer instance.
+	 *
+	 * @var Plugin_Composer
+	 */
+	private $composer;
+
+	/**
 	 * Constructor.
 	 *
 	 * @param API $ai_api The AI API in use.
 	 */
 	public function __construct( $ai_api ) {
 		$this->ai_api = $ai_api;
+		$this->composer = new Plugin_Composer( $ai_api );
+	}
+
+	/**
+	 * Generate a plugin plan using composer-based approach.
+	 *
+	 * @param string $input The plugin features.
+	 *
+	 * @return string|WP_Error
+	 */
+	public function generate_composer_plan( $input ) {
+		return $this->composer->analyze_and_compose( $input );
+	}
+
+	/**
+	 * Generate plugin code from composer plan.
+	 *
+	 * @param array $composition The composition plan.
+	 *
+	 * @return string|WP_Error
+	 */
+	public function generate_composer_code( $composition ) {
+		return $this->composer->generate_composed_plugin( $composition );
+	}
+
+	/**
+	 * Modify existing plugin using composer.
+	 *
+	 * @param string $plugin_code The existing plugin code.
+	 * @param array  $modifications The modifications to apply.
+	 *
+	 * @return string|WP_Error
+	 */
+	public function modify_plugin_with_composer( $plugin_code, $modifications ) {
+		return $this->composer->modify_plugin( $plugin_code, $modifications );
+	}
+
+	/**
+	 * Get available composer components.
+	 *
+	 * @return array
+	 */
+	public function get_composer_components() {
+		return $this->composer->get_components();
 	}
 
 	/**
@@ -45,6 +96,12 @@ class Plugin_Generator {
 	 * @return string|WP_Error
 	 */
 	public function generate_plugin_plan( $input ) {
+		$use_composer = get_option( 'wp_autoplugin_use_composer', false );
+		
+		if ( $use_composer ) {
+			return $this->generate_composer_plan( $input );
+		}
+		
 		$plugin_mode = get_option( 'wp_autoplugin_plugin_mode', 'simple' );
 		
 		if ( 'complex' === $plugin_mode ) {
@@ -138,6 +195,16 @@ class Plugin_Generator {
 	 * @return string|WP_Error
 	 */
 	public function generate_plugin_code( $plan ) {
+		$use_composer = get_option( 'wp_autoplugin_use_composer', false );
+		
+		// Check if this is a composer plan
+		if ( $use_composer ) {
+			$decoded_plan = json_decode( $plan, true );
+			if ( json_last_error() === JSON_ERROR_NONE && isset( $decoded_plan['suggested_components'] ) ) {
+				return $this->generate_composer_code( $decoded_plan );
+			}
+		}
+		
 		$plugin_mode = get_option( 'wp_autoplugin_plugin_mode', 'simple' );
 		
 		if ( 'complex' === $plugin_mode ) {

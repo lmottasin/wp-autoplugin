@@ -69,7 +69,7 @@ class Ajax {
 	 */
 	private function register_actions() {
 		$actions = [
-			'generator'      => [ 'generate_plan', 'generate_code', 'generate_file', 'review_code', 'create_plugin' ],
+			'generator'      => [ 'generate_plan', 'generate_code', 'generate_file', 'review_code', 'create_plugin', 'modify_plugin', 'get_composer_components' ],
 			'fixer'          => [ 'generate_fix_plan', 'generate_fix_code', 'fix_plugin', 'generate_fix_file' ],
 			'extender'       => [ 'generate_extend_plan', 'generate_extend_code', 'extend_plugin', 'generate_extend_file' ],
 			'hooks_extender' => [ 'extract_hooks', 'generate_extend_hooks_plan', 'generate_extend_hooks_code', 'generate_extend_hooks_file' ],

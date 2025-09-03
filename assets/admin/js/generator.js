@@ -26,6 +26,8 @@
     let fileEditors        = {};
     let totalTokenUsage    = { input_tokens: 0, output_tokens: 0 };
     let reviewData         = null;
+    let composerComponents = [];
+    let isComposerMode     = false;
 
     // Step mapping
     const steps = {
@@ -40,6 +42,12 @@
             document.getElementById('plugin_description').value = pluginDescription;
         },
         reviewPlan: () => {
+            // Check if this is a composer plan with suggested components
+            if (pluginPlan.suggested_components) {
+                displayComposerComponents(pluginPlan.suggested_components);
+                isComposerMode = true;
+            }
+            
             const accordion = buildAccordion(pluginPlan);
             pluginPlanContainer.innerHTML = accordion;
             attachAccordionListeners();
@@ -936,5 +944,199 @@
             get totalTokenUsage() { return totalTokenUsage; }
         }
     };
+
+    // ----- Composer Functions -----
+    
+    function displayComposerComponents(suggestedComponents) {
+        const container = document.getElementById('composer_components_container');
+        const list = document.getElementById('composer_components_list');
+        
+        if (!container || !list) return;
+        
+        container.style.display = 'block';
+        
+        let html = '';
+        suggestedComponents.forEach(component => {
+            html += `
+                <div class="composer-component">
+                    <h4>${escapeHtml(component.component)}</h4>
+                    <p class="component-purpose">${escapeHtml(component.purpose)}</p>
+                    ${component.configuration ? 
+                        `<div class="component-config">${escapeHtml(JSON.stringify(component.configuration, null, 2))}</div>` 
+                        : ''}
+                </div>
+            `;
+        });
+        
+        list.innerHTML = html;
+        
+        // Attach modify components event
+        const modifyBtn = document.getElementById('modify-components');
+        if (modifyBtn) {
+            modifyBtn.onclick = showComponentModifier;
+        }
+    }
+    
+    function showComponentModifier() {
+        // Create a modal or expandable section for modifying components
+        const modal = document.createElement('div');
+        modal.className = 'composer-modal';
+        modal.innerHTML = `
+            <div class="composer-modal-content">
+                <h3>Modify Plugin Components</h3>
+                <div class="composer-component-selector" id="component-selector">
+                    <p>Loading available components...</p>
+                </div>
+                <div class="composer-modal-actions">
+                    <button type="button" id="apply-component-changes" class="button button-primary">Apply Changes</button>
+                    <button type="button" id="cancel-component-changes" class="button">Cancel</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Load available components
+        loadAvailableComponents();
+        
+        // Attach event listeners
+        document.getElementById('apply-component-changes').onclick = applyComponentChanges;
+        document.getElementById('cancel-component-changes').onclick = () => {
+            document.body.removeChild(modal);
+        };
+    }
+    
+    async function loadAvailableComponents() {
+        const formData = new FormData();
+        formData.append('action', 'wp_autoplugin_get_composer_components');
+        formData.append('security', wp_autoplugin.nonce);
+        
+        try {
+            const response = await wpAutoPluginCommon.sendRequest(formData);
+            if (response.success && response.data.components) {
+                displayComponentSelector(response.data.components);
+            }
+        } catch (error) {
+            console.error('Failed to load components:', error);
+        }
+    }
+    
+    function displayComponentSelector(components) {
+        const selector = document.getElementById('component-selector');
+        if (!selector) return;
+        
+        let html = '';
+        Object.entries(components).forEach(([key, component]) => {
+            const isSelected = pluginPlan.suggested_components && 
+                pluginPlan.suggested_components.some(c => c.component === key);
+            
+            html += `
+                <div class="component-option">
+                    <input type="checkbox" id="component-${key}" value="${key}" ${isSelected ? 'checked' : ''}>
+                    <div class="component-info">
+                        <div class="component-name">${escapeHtml(component.name)}</div>
+                        <p class="component-description">${escapeHtml(component.description)}</p>
+                    </div>
+                </div>
+                <div class="component-configuration" id="config-${key}" ${isSelected ? 'style="display: block;"' : ''}>
+                    <label for="purpose-${key}">Purpose:</label>
+                    <input type="text" id="purpose-${key}" placeholder="Why this component is needed">
+                    <label for="config-${key}">Configuration (JSON):</label>
+                    <textarea id="config-data-${key}" placeholder='{"key": "value"}'></textarea>
+                </div>
+            `;
+        });
+        
+        selector.innerHTML = html;
+        
+        // Attach checkbox change listeners
+        selector.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const configDiv = document.getElementById(`config-${e.target.value}`);
+                if (configDiv) {
+                    configDiv.style.display = e.target.checked ? 'block' : 'none';
+                }
+            });
+        });
+    }
+    
+    async function applyComponentChanges() {
+        const selector = document.getElementById('component-selector');
+        const checkedComponents = selector.querySelectorAll('input[type="checkbox"]:checked');
+        
+        const modifications = {
+            action: 'modify_components',
+            components: []
+        };
+        
+        checkedComponents.forEach(checkbox => {
+            const key = checkbox.value;
+            const purpose = document.getElementById(`purpose-${key}`).value;
+            const configText = document.getElementById(`config-data-${key}`).value;
+            
+            let config = {};
+            if (configText.trim()) {
+                try {
+                    config = JSON.parse(configText);
+                } catch (e) {
+                    config = { raw: configText };
+                }
+            }
+            
+            modifications.components.push({
+                component: key,
+                purpose: purpose || 'User selected component',
+                configuration: config
+            });
+        });
+        
+        // If using composer mode and have existing plugin code, modify it
+        if (isComposerMode && pluginCode) {
+            await modifyPluginWithComposer(modifications);
+        } else {
+            // Update the plan with new components
+            pluginPlan.suggested_components = modifications.components;
+            displayComposerComponents(modifications.components);
+        }
+        
+        // Close modal
+        const modal = document.querySelector('.composer-modal');
+        if (modal) {
+            document.body.removeChild(modal);
+        }
+    }
+    
+    async function modifyPluginWithComposer(modifications) {
+        const formData = new FormData();
+        formData.append('action', 'wp_autoplugin_modify_plugin');
+        formData.append('plugin_code', pluginCode);
+        formData.append('modifications', JSON.stringify(modifications));
+        formData.append('security', wp_autoplugin.nonce);
+        
+        try {
+            const response = await wpAutoPluginCommon.sendRequest(formData);
+            if (response.success) {
+                pluginCode = response.data.modified_code;
+                if (pluginCodeTextarea) {
+                    pluginCodeTextarea.value = pluginCode;
+                    editorInstance = wpAutoPluginCommon.updateCodeEditor(editorInstance, pluginCodeTextarea, pluginCode);
+                }
+                
+                // Update token usage
+                if (response.data.token_usage) {
+                    totalTokenUsage.input_tokens += response.data.token_usage.input_tokens || 0;
+                    totalTokenUsage.output_tokens += response.data.token_usage.output_tokens || 0;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to modify plugin:', error);
+        }
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
 
 })();
